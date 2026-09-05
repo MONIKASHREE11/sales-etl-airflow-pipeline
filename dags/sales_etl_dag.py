@@ -1,14 +1,24 @@
 ﻿import csv
 import psycopg2
-from datetime import datetime
+from datetime import datetime, timedelta
 from airflow.sdk import DAG, task
+
+default_args = {
+    "owner": "monika",
+    "retries": 3,
+    "retry_delay": timedelta(minutes=5),
+    "email_on_failure": False,
+    "email_on_retry": False,
+}
 
 with DAG(
     dag_id="sales_etl_pipeline",
+    default_args=default_args,
     start_date=datetime(2025, 1, 1),
     schedule="@daily",
     catchup=False,
     tags=["etl", "sales"],
+    description="Daily ETL pipeline: extracts Superstore sales data, enriches with INR conversion, and loads into PostgreSQL.",
 ) as dag:
 
     @task()
@@ -19,6 +29,8 @@ with DAG(
             reader = csv.DictReader(f)
             for row in reader:
                 rows.append(dict(row))
+        if not rows:
+            raise ValueError("No data found in CSV file!")
         print(f"Extracted {len(rows)} rows.")
         return rows
 
@@ -56,6 +68,8 @@ with DAG(
             except Exception as e:
                 print(f"Skipping row due to error: {e}")
                 continue
+        if not cleaned:
+            raise ValueError("No rows survived transformation!")
         print(f"Transformed {len(cleaned)} rows.")
         return cleaned
 

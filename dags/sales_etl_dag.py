@@ -1,4 +1,5 @@
 ﻿import csv
+import psycopg2
 from datetime import datetime
 from airflow.sdk import DAG, task
 
@@ -58,6 +59,34 @@ with DAG(
         print(f"Transformed {len(cleaned)} rows.")
         return cleaned
 
+    @task()
+    def load(rows):
+        conn = psycopg2.connect(
+            host="etl_postgres",
+            port=5432,
+            dbname="sales_data",
+            user="etl_user",
+            password="etl_password"
+        )
+        cursor = conn.cursor()
+        cursor.execute("TRUNCATE TABLE sales;")
+        insert_query = """
+            INSERT INTO sales (order_id, order_date, category, sub_category,
+                               product_name, sales_usd, sales_inr, quantity, region)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        for row in rows:
+            cursor.execute(insert_query, (
+                row["order_id"], row["order_date"], row["category"],
+                row["sub_category"], row["product_name"], row["sales_usd"],
+                row["sales_inr"], row["quantity"], row["region"]
+            ))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print(f"Loaded {len(rows)} rows into PostgreSQL.")
+
     extracted = extract()
     enriched = enrich(extracted)
-    transform(enriched)
+    transformed = transform(enriched)
+    load(transformed)
